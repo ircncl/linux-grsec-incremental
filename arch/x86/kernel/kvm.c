@@ -419,7 +419,14 @@ static void kvm_leave_lazy_mmu(void)
 static void __init paravirt_ops_setup(void)
 {
 	pv_info.name = "KVM";
-	pv_info.paravirt_enabled = 1;
+
+	/*
+	 * KVM isn't paravirt in the sense of paravirt_enabled.  A KVM
+	 * guest kernel works like a bare metal kernel with additional
+	 * features, and paravirt_enabled is about features that are
+	 * missing.
+	 */
+	pv_info.paravirt_enabled = 0;
 
 	if (kvm_para_has_feature(KVM_FEATURE_NOP_IO_DELAY))
 		pv_cpu_ops.io_delay = kvm_io_delay;
@@ -437,6 +444,7 @@ static void __init paravirt_ops_setup(void)
 		pv_mmu_ops.set_pud = kvm_set_pud;
 #if PAGETABLE_LEVELS == 4
 		pv_mmu_ops.set_pgd = kvm_set_pgd;
+		pv_mmu_ops.set_pgd_batched = kvm_set_pgd;
 #endif
 #endif
 		pv_mmu_ops.flush_tlb_user = kvm_flush_tlb;
@@ -579,7 +587,7 @@ static int __cpuinit kvm_cpu_notify(struct notifier_block *self,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block __cpuinitdata kvm_cpu_notifier = {
+static struct notifier_block kvm_cpu_notifier = {
         .notifier_call  = kvm_cpu_notify,
 };
 #endif
