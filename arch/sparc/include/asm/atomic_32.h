@@ -13,8 +13,6 @@
 
 #include <linux/types.h>
 
-#include <asm-generic/atomic64.h>
-
 #ifdef __KERNEL__
 
 #include <asm-generic/atomic64.h>

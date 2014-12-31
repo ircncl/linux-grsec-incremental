@@ -76,20 +76,18 @@ struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
 
-static __noreturn void mrst_power_off(void)
+static void mrst_power_off(void)
 {
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
-	BUG();
 }
 
-static __noreturn void mrst_reboot(void)
+static void mrst_reboot(void)
 {
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 	else
 		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
-	BUG();
 }
 
 /* parse all the mtimer info to a static mtimer array */

@@ -1380,9 +1380,7 @@ static int cayman_startup(struct radeon_device *rdev)
 	r = evergreen_blit_init(rdev);
 	if (r) {
 		r600_blit_fini(rdev);
-		pax_open_kernel();
-		*(void **)&rdev->asic->copy = NULL;
-		pax_close_kernel();
+		rdev->asic->copy = NULL;
 		dev_warn(rdev->dev, "failed blitter (%d) falling back to memcpy\n", r);
 	}
 

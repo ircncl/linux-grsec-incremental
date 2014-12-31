@@ -1207,7 +1207,8 @@ int bnx2x_vlan_mac_move(struct bnx2x *bp,
 
 /********************* RX MODE ****************/
 
-void bnx2x_init_rx_mode_obj(struct bnx2x *bp);
+void bnx2x_init_rx_mode_obj(struct bnx2x *bp,
+			    struct bnx2x_rx_mode_obj *o);
 
 /**
  * Send and RX_MODE ramrod according to the provided parameters.

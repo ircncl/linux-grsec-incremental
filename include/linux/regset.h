@@ -160,8 +160,7 @@ struct user_regset {
 	unsigned int 			align;
 	unsigned int 			bias;
 	unsigned int 			core_note_type;
-} __do_const;
-typedef struct user_regset __no_const user_regset_no_const;
+};
 
 /**
  * struct user_regset_view - available regsets
