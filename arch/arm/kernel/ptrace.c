@@ -908,7 +908,7 @@ enum ptrace_syscall_dir {
 	PTRACE_SYSCALL_EXIT,
 };
 
-static void tracehook_report_syscall(struct pt_regs *regs,
+static int tracehook_report_syscall(struct pt_regs *regs,
 				    enum ptrace_syscall_dir dir)
 {
 	unsigned long ip;
@@ -926,29 +926,19 @@ static void tracehook_report_syscall(struct pt_regs *regs,
 		current_thread_info()->syscall = -1;
 
 	regs->ARM_ip = ip;
+	return current_thread_info()->syscall;
 }
-
-#ifdef CONFIG_GRKERNSEC_SETXID
-extern void gr_delayed_cred_worker(void);
-#endif
 
 asmlinkage int syscall_trace_enter(struct pt_regs *regs, int scno)
 {
 	current_thread_info()->syscall = scno;
-
-#ifdef CONFIG_GRKERNSEC_SETXID
-	if (unlikely(test_and_clear_thread_flag(TIF_GRSEC_SETXID)))
-		gr_delayed_cred_worker();
-#endif
 
 	/* Do the secure computing check first; failures should be fast. */
 	if (secure_computing(scno) == -1)
 		return -1;
 
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
-		tracehook_report_syscall(regs, PTRACE_SYSCALL_ENTER);
-
-	scno = current_thread_info()->syscall;
+		scno = tracehook_report_syscall(regs, PTRACE_SYSCALL_ENTER);
 
 	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
 		trace_sys_enter(regs, scno);
