@@ -2825,7 +2825,7 @@ static int proc_unres_qlen(struct ctl_table *ctl, int write,
 			   void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	int size, ret;
-	ctl_table_no_const tmp = *ctl;
+	struct ctl_table tmp = *ctl;
 
 	tmp.extra1 = &zero;
 	tmp.extra2 = &unres_qlen_max;
@@ -2887,7 +2887,7 @@ static int neigh_proc_dointvec_zero_intmax(struct ctl_table *ctl, int write,
 					   void __user *buffer,
 					   size_t *lenp, loff_t *ppos)
 {
-	ctl_table_no_const tmp = *ctl;
+	struct ctl_table tmp = *ctl;
 	int ret;
 
 	tmp.extra1 = &zero;

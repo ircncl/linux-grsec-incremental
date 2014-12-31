@@ -449,7 +449,7 @@ static struct attribute *rapl_events_hsw_attr[] = {
 	NULL,
 };
 
-static attribute_group_no_const rapl_pmu_events_group __read_only = {
+static struct attribute_group rapl_pmu_events_group = {
 	.name = "events",
 	.attrs = NULL, /* patched at runtime */
 };
