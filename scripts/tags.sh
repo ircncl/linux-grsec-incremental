@@ -116,7 +116,7 @@ docscope()
 
 dogtags()
 {
-	all_sources | gtags -i -f -
+	all_sources | gtags -f -
 }
 
 exuberant()

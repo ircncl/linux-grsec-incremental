@@ -924,9 +924,7 @@ struct c2port_device *c2port_device_register(char *name,
 	mutex_init(&c2dev->mutex);
 
 	/* Create binary file */
-	pax_open_kernel();
-	*(size_t *)&c2port_bin_attrs.size = ops->blocks_num * ops->block_size;
-	pax_close_kernel();
+	c2port_bin_attrs.size = ops->blocks_num * ops->block_size;
 	ret = device_create_bin_file(c2dev->dev, &c2port_bin_attrs);
 	if (unlikely(ret))
 		goto error_device_create_bin_file;

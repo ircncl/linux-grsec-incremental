@@ -8,8 +8,6 @@
 #ifndef _SPARC_PAGE_H
 #define _SPARC_PAGE_H
 
-#include <linux/const.h>
-
 #define PAGE_SHIFT   12
 
 #ifndef __ASSEMBLY__

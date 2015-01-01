@@ -288,20 +288,18 @@ int genl_register_ops(struct genl_family *family, struct genl_ops *ops)
 		goto errout;
 	}
 
-	pax_open_kernel();
 	if (ops->dumpit)
-		*(unsigned int *)&ops->flags |= GENL_CMD_CAP_DUMP;
+		ops->flags |= GENL_CMD_CAP_DUMP;
 	if (ops->doit)
-		*(unsigned int *)&ops->flags |= GENL_CMD_CAP_DO;
+		ops->flags |= GENL_CMD_CAP_DO;
 	if (ops->policy)
-		*(unsigned int *)&ops->flags |= GENL_CMD_CAP_HASPOL;
-	pax_close_kernel();
+		ops->flags |= GENL_CMD_CAP_HASPOL;
 
 	genl_lock();
-	pax_list_add_tail((struct list_head *)&ops->ops_list, &family->ops_list);
+	list_add_tail(&ops->ops_list, &family->ops_list);
 	genl_unlock();
 
-	genl_ctrl_event(CTRL_CMD_NEWOPS, (void *)ops);
+	genl_ctrl_event(CTRL_CMD_NEWOPS, ops);
 	err = 0;
 errout:
 	return err;
@@ -331,9 +329,9 @@ int genl_unregister_ops(struct genl_family *family, struct genl_ops *ops)
 	genl_lock();
 	list_for_each_entry(rc, &family->ops_list, ops_list) {
 		if (rc == ops) {
-			pax_list_del((struct list_head *)&ops->ops_list);
+			list_del(&ops->ops_list);
 			genl_unlock();
-			genl_ctrl_event(CTRL_CMD_DELOPS, (void *)ops);
+			genl_ctrl_event(CTRL_CMD_DELOPS, ops);
 			return 0;
 		}
 	}
