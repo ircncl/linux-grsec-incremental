@@ -126,7 +126,7 @@ unsigned int sk_run_filter(const struct sk_buff *skb,
 	void *ptr;
 	u32 A = 0;			/* Accumulator */
 	u32 X = 0;			/* Index Register */
-	u32 mem[BPF_MEMWORDS] = {};	/* Scratch Memory Store */
+	u32 mem[BPF_MEMWORDS];		/* Scratch Memory Store */
 	u32 tmp;
 	int k;
 
@@ -292,10 +292,10 @@ load_b:
 			X = K;
 			continue;
 		case BPF_S_LD_MEM:
-			A = mem[K&15];
+			A = mem[K];
 			continue;
 		case BPF_S_LDX_MEM:
-			X = mem[K&15];
+			X = mem[K];
 			continue;
 		case BPF_S_MISC_TAX:
 			X = A;
@@ -308,10 +308,10 @@ load_b:
 		case BPF_S_RET_A:
 			return A;
 		case BPF_S_ST:
-			mem[K&15] = A;
+			mem[K] = A;
 			continue;
 		case BPF_S_STX:
-			mem[K&15] = X;
+			mem[K] = X;
 			continue;
 		case BPF_S_ANC_PROTOCOL:
 			A = ntohs(skb->protocol);
@@ -395,10 +395,9 @@ load_b:
 			continue;
 #endif
 		default:
-			WARN(1, KERN_ALERT "Unknown sock filter code:%u jt:%u tf:%u k:%u\n",
+			WARN_RATELIMIT(1, "Unknown code:%u jt:%u tf:%u k:%u\n",
 				       fentry->code, fentry->jt,
 				       fentry->jf, fentry->k);
-			BUG();
 			return 0;
 		}
 	}
@@ -421,7 +420,7 @@ static int check_load_and_stores(struct sock_filter *filter, int flen)
 	u16 *masks, memvalid = 0; /* one bit per cell, 16 cells */
 	int pc, ret = 0;
 
-	BUILD_BUG_ON(BPF_MEMWORDS != 16);
+	BUILD_BUG_ON(BPF_MEMWORDS > 16);
 	masks = kmalloc(flen * sizeof(*masks), GFP_KERNEL);
 	if (!masks)
 		return -ENOMEM;
@@ -684,7 +683,7 @@ int sk_unattached_filter_create(struct sk_filter **pfp,
 	fp = kmalloc(sk_filter_size(fprog->len), GFP_KERNEL);
 	if (!fp)
 		return -ENOMEM;
-	memcpy(fp->insns, (void __force_kernel *)fprog->filter, fsize);
+	memcpy(fp->insns, fprog->filter, fsize);
 
 	atomic_set(&fp->refcnt, 1);
 	fp->len = fprog->len;
