@@ -76,7 +76,7 @@ ENTRY(startup_32)
 	notl	%eax
 	andl    %eax, %ebx
 #else
-	movl	$____LOAD_PHYSICAL_ADDR, %ebx
+	movl	$LOAD_PHYSICAL_ADDR, %ebx
 #endif
 
 	/* Target address to relocate to for decompression */
@@ -162,7 +162,7 @@ relocated:
  * and where it was actually loaded.
  */
 	movl	%ebp, %ebx
-	subl	$____LOAD_PHYSICAL_ADDR, %ebx
+	subl	$LOAD_PHYSICAL_ADDR, %ebx
 	jz	2f	/* Nothing to be done if loaded at compiled addr. */
 /*
  * Process relocations.
@@ -170,7 +170,8 @@ relocated:
 
 1:	subl	$4, %edi
 	movl	(%edi), %ecx
-	jecxz	2f
+	testl	%ecx, %ecx
+	jz	2f
 	addl	%ebx, -__PAGE_OFFSET(%ebx, %ecx)
 	jmp	1b
 2:

@@ -214,7 +214,7 @@ extern struct local_ports {
 } sysctl_local_ports;
 extern void inet_get_local_port_range(int *low, int *high);
 
-extern unsigned long sysctl_local_reserved_ports[65536 / 8 / sizeof(unsigned long)];
+extern unsigned long *sysctl_local_reserved_ports;
 static inline int inet_is_reserved_local_port(int port)
 {
 	return test_bit(port, sysctl_local_reserved_ports);

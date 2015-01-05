@@ -21,10 +21,6 @@ extern unsigned char boot_cpu_id;
 extern unsigned char boot_cpu_id4;
 #endif
 
-#ifdef CONFIG_SPARC64
-void __init start_early_boot(void);
-#endif
-
 #endif /* __KERNEL__ */
 
 #endif /* _SPARC_SETUP_H */

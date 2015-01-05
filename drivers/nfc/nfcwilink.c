@@ -237,7 +237,7 @@ static struct nci_ops nfcwilink_ops = {
 
 static int nfcwilink_probe(struct platform_device *pdev)
 {
-	struct nfcwilink *drv;
+	static struct nfcwilink *drv;
 	int rc;
 	u32 protocols;
 

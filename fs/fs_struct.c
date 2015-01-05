@@ -4,7 +4,6 @@
 #include <linux/path.h>
 #include <linux/slab.h>
 #include <linux/fs_struct.h>
-#include <linux/grsecurity.h>
 #include "internal.h"
 
 static inline void path_get_longterm(struct path *path)
@@ -32,7 +31,6 @@ void set_fs_root(struct fs_struct *fs, struct path *path)
 	old_root = fs->root;
 	fs->root = *path;
 	path_get_longterm(path);
-	gr_set_chroot_entries(current, path);
 	write_seqcount_end(&fs->seq);
 	spin_unlock(&fs->lock);
 	if (old_root.dentry)
@@ -76,13 +74,6 @@ void chroot_fs_refs(struct path *old_root, struct path *new_root)
 			    && fs->root.mnt == old_root->mnt) {
 				path_get_longterm(new_root);
 				fs->root = *new_root;
-				/* This function is only called
-				   from pivot_root().  Leave our
-				   gr_chroot_dentry and is_chrooted flags
-				   as-is, so that a pivoted root isn't treated
-				   as a chroot
-				*/
-				//gr_set_chroot_entries(p, new_root);
 				count++;
 			}
 			if (fs->pwd.dentry == old_root->dentry
@@ -118,8 +109,7 @@ void exit_fs(struct task_struct *tsk)
 		spin_lock(&fs->lock);
 		write_seqcount_begin(&fs->seq);
 		tsk->fs = NULL;
-		gr_clear_chroot_entries(tsk);
-		kill = !atomic_dec_return(&fs->users);
+		kill = !--fs->users;
 		write_seqcount_end(&fs->seq);
 		spin_unlock(&fs->lock);
 		task_unlock(tsk);
@@ -133,7 +123,7 @@ struct fs_struct *copy_fs_struct(struct fs_struct *old)
 	struct fs_struct *fs = kmem_cache_alloc(fs_cachep, GFP_KERNEL);
 	/* We don't need to lock fs - think why ;-) */
 	if (fs) {
-		atomic_set(&fs->users, 1);
+		fs->users = 1;
 		fs->in_exec = 0;
 		spin_lock_init(&fs->lock);
 		seqcount_init(&fs->seq);
@@ -142,9 +132,6 @@ struct fs_struct *copy_fs_struct(struct fs_struct *old)
 		spin_lock(&old->lock);
 		fs->root = old->root;
 		path_get_longterm(&fs->root);
-		/* instead of calling gr_set_chroot_entries here,
-		   we call it from every caller of this function
-		*/
 		fs->pwd = old->pwd;
 		path_get_longterm(&fs->pwd);
 		spin_unlock(&old->lock);
@@ -163,9 +150,8 @@ int unshare_fs_struct(void)
 
 	task_lock(current);
 	spin_lock(&fs->lock);
-	kill = !atomic_dec_return(&fs->users);
+	kill = !--fs->users;
 	current->fs = new_fs;
-	gr_set_chroot_entries(current, &new_fs->root);
 	spin_unlock(&fs->lock);
 	task_unlock(current);
 
@@ -178,13 +164,13 @@ EXPORT_SYMBOL_GPL(unshare_fs_struct);
 
 int current_umask(void)
 {
-	return current->fs->umask | gr_acl_umask();
+	return current->fs->umask;
 }
 EXPORT_SYMBOL(current_umask);
 
 /* to be mentioned only in INIT_TASK */
 struct fs_struct init_fs = {
-	.users		= ATOMIC_INIT(1),
+	.users		= 1,
 	.lock		= __SPIN_LOCK_UNLOCKED(init_fs.lock),
 	.seq		= SEQCNT_ZERO,
 	.umask		= 0022,
@@ -200,13 +186,12 @@ void daemonize_fs_struct(void)
 		task_lock(current);
 
 		spin_lock(&init_fs.lock);
-		atomic_inc(&init_fs.users);
+		init_fs.users++;
 		spin_unlock(&init_fs.lock);
 
 		spin_lock(&fs->lock);
 		current->fs = &init_fs;
-		gr_set_chroot_entries(current, &current->fs->root);
-		kill = !atomic_dec_return(&fs->users);
+		kill = !--fs->users;
 		spin_unlock(&fs->lock);
 
 		task_unlock(current);

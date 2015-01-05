@@ -1059,11 +1059,10 @@ static int configfs_dump(struct configfs_dirent *sd, int level)
 static int configfs_depend_prep(struct dentry *origin,
 				struct config_item *target)
 {
-	struct configfs_dirent *child_sd, *sd;
+	struct configfs_dirent *child_sd, *sd = origin->d_fsdata;
 	int ret = 0;
 
-	BUG_ON(!origin || !origin->d_fsdata);
-	sd = origin->d_fsdata;
+	BUG_ON(!origin || !sd);
 
 	if (sd->s_element == target)  /* Boo-yah */
 		goto out;
@@ -1588,8 +1587,7 @@ static int configfs_readdir(struct file * filp, void * dirent, filldir_t filldir
 			}
 			for (p=q->next; p!= &parent_sd->s_children; p=p->next) {
 				struct configfs_dirent *next;
-				const unsigned char * name;
-				char d_name[sizeof(next->s_dentry->d_iname)];
+				const char * name;
 				int len;
 				struct inode *inode = NULL;
 
@@ -1599,12 +1597,7 @@ static int configfs_readdir(struct file * filp, void * dirent, filldir_t filldir
 					continue;
 
 				name = configfs_get_name(next);
-				if (next->s_dentry && name == next->s_dentry->d_iname) {
-					len =  next->s_dentry->d_name.len;
-					memcpy(d_name, name, len);
-					name = d_name;
-				} else
-					len = strlen(name);
+				len = strlen(name);
 
 				/*
 				 * We'll have a dentry and an inode for

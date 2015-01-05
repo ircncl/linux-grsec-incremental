@@ -111,10 +111,7 @@ void __init init_IRQ(void)
 #endif
 }
 
-
 #ifdef DEBUG_STACKOVERFLOW
-extern void gr_handle_kernel_exploit(void);
-
 static inline void check_stack_overflow(void)
 {
 	unsigned long sp;
@@ -130,7 +127,6 @@ static inline void check_stack_overflow(void)
 		printk("do_IRQ: stack overflow: %ld\n",
 		       sp - sizeof(struct thread_info));
 		dump_stack();
-		gr_handle_kernel_exploit();
 	}
 }
 #else

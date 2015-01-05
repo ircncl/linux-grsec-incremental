@@ -301,7 +301,7 @@ static void ti_st_destruct(struct hci_dev *hdev)
 
 static int bt_ti_probe(struct platform_device *pdev)
 {
-	struct ti_st *hst;
+	static struct ti_st *hst;
 	struct hci_dev *hdev;
 	int err;
 
