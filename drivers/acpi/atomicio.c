@@ -286,7 +286,6 @@ static int acpi_atomic_read_mem(u64 paddr, u64 *val, u32 width)
 		break;
 #endif
 	default:
-		rcu_read_unlock();
 		return -EINVAL;
 	}
 	rcu_read_unlock();
@@ -316,7 +315,6 @@ static int acpi_atomic_write_mem(u64 paddr, u64 val, u32 width)
 		break;
 #endif
 	default:
-		rcu_read_unlock();
 		return -EINVAL;
 	}
 	rcu_read_unlock();

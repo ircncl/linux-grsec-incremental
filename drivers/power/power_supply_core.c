@@ -23,10 +23,7 @@
 struct class *power_supply_class;
 EXPORT_SYMBOL_GPL(power_supply_class);
 
-extern const struct attribute_group *power_supply_attr_groups[];
-static struct device_type power_supply_dev_type = {
-	.groups = power_supply_attr_groups,
-};
+static struct device_type power_supply_dev_type;
 
 static int __power_supply_changed_work(struct device *dev, void *data)
 {
@@ -218,7 +215,7 @@ static int __init power_supply_class_init(void)
 		return PTR_ERR(power_supply_class);
 
 	power_supply_class->dev_uevent = power_supply_uevent;
-	power_supply_init_attrs();
+	power_supply_init_attrs(&power_supply_dev_type);
 
 	return 0;
 }

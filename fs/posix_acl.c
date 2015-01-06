@@ -19,7 +19,6 @@
 #include <linux/sched.h>
 #include <linux/posix_acl.h>
 #include <linux/module.h>
-#include <linux/grsecurity.h>
 
 #include <linux/errno.h>
 
@@ -187,7 +186,7 @@ posix_acl_equiv_mode(const struct posix_acl *acl, umode_t *mode_p)
 		}
 	}
         if (mode_p)
-                *mode_p = ((*mode_p & ~S_IRWXUGO) | mode) & ~gr_acl_umask();
+                *mode_p = (*mode_p & ~S_IRWXUGO) | mode;
         return not_equiv;
 }
 
@@ -338,7 +337,7 @@ static int posix_acl_create_masq(struct posix_acl *acl, umode_t *mode_p)
 		mode &= (group_obj->e_perm << 3) | ~S_IRWXG;
 	}
 
-	*mode_p = ((*mode_p & ~S_IRWXUGO) | mode) & ~gr_acl_umask();
+	*mode_p = (*mode_p & ~S_IRWXUGO) | mode;
         return not_equiv;
 }
 
@@ -396,8 +395,6 @@ posix_acl_create(struct posix_acl **acl, gfp_t gfp, umode_t *mode_p)
 	struct posix_acl *clone = posix_acl_clone(*acl, gfp);
 	int err = -ENOMEM;
 	if (clone) {
-		*mode_p &= ~gr_acl_umask();
-
 		err = posix_acl_create_masq(clone, mode_p);
 		if (err < 0) {
 			posix_acl_release(clone);
