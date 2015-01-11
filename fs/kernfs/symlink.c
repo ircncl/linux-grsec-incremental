@@ -132,7 +132,7 @@ static void *kernfs_iop_follow_link(struct dentry *dentry, struct nameidata *nd)
 static void kernfs_iop_put_link(struct dentry *dentry, struct nameidata *nd,
 				void *cookie)
 {
-	const char *page = nd_get_link(nd);
+	char *page = nd_get_link(nd);
 	if (!IS_ERR(page))
 		free_page((unsigned long)page);
 }
