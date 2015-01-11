@@ -361,7 +361,6 @@ static struct throtl_grp * throtl_get_tg(struct throtl_data *td)
 	/* Group allocation failed. Account the IO to root group */
 	if (!tg) {
 		tg = td->root_tg;
-		rcu_read_unlock();
 		return tg;
 	}
 

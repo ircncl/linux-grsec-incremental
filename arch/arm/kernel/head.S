@@ -46,9 +46,7 @@
 	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - PG_DIR_SIZE
 
 	.macro	pgtbl, rd, phys
-	mov	\rd, #TEXT_OFFSET
-	sub	\rd, #PG_DIR_SIZE
-	add	\rd, \rd, \phys
+	add	\rd, \phys, #TEXT_OFFSET - PG_DIR_SIZE
 	.endm
 
 #ifdef CONFIG_XIP_KERNEL

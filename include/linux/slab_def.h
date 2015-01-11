@@ -68,14 +68,10 @@ struct kmem_cache {
 	unsigned long node_allocs;
 	unsigned long node_frees;
 	unsigned long node_overflow;
-	atomic_unchecked_t allochit;
-	atomic_unchecked_t allocmiss;
-	atomic_unchecked_t freehit;
-	atomic_unchecked_t freemiss;
-#ifdef CONFIG_PAX_MEMORY_SANITIZE
-	atomic_unchecked_t sanitized;
-	atomic_unchecked_t not_sanitized;
-#endif
+	atomic_t allochit;
+	atomic_t allocmiss;
+	atomic_t freehit;
+	atomic_t freemiss;
 
 	/*
 	 * If debugging is enabled, then the allocator can add additional
@@ -109,11 +105,6 @@ struct cache_sizes {
 #ifdef CONFIG_ZONE_DMA
 	struct kmem_cache	*cs_dmacachep;
 #endif
-
-#ifdef CONFIG_PAX_USERCOPY_SLABS
-	struct kmem_cache	*cs_usercopycachep;
-#endif
-
 };
 extern struct cache_sizes malloc_sizes[];
 
@@ -161,13 +152,6 @@ found:
 			cachep = malloc_sizes[i].cs_dmacachep;
 		else
 #endif
-
-#ifdef CONFIG_PAX_USERCOPY_SLABS
-		if (flags & GFP_USERCOPY)
-			cachep = malloc_sizes[i].cs_usercopycachep;
-		else
-#endif
-
 			cachep = malloc_sizes[i].cs_cachep;
 
 		ret = kmem_cache_alloc_trace(size, cachep, flags);
@@ -197,7 +181,6 @@ kmem_cache_alloc_node_trace(size_t size,
 }
 #endif
 
-static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node) __size_overflow(1);
 static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
 {
 	struct kmem_cache *cachep;
@@ -222,13 +205,6 @@ found:
 			cachep = malloc_sizes[i].cs_dmacachep;
 		else
 #endif
-
-#ifdef CONFIG_PAX_USERCOPY_SLABS
-		if (flags & GFP_USERCOPY)
-			cachep = malloc_sizes[i].cs_usercopycachep;
-		else
-#endif
-
 			cachep = malloc_sizes[i].cs_cachep;
 
 		return kmem_cache_alloc_node_trace(size, cachep, flags, node);

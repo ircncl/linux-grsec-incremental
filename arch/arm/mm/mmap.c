@@ -33,7 +33,6 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	unsigned long start_addr;
 	int do_align = 0;
 	int aliasing = cache_is_vipt_aliasing();
-	unsigned long offset = gr_rand_threadstack_offset(mm, filp, flags);
 
 	/*
 	 * We only need to do colour alignment if either the I or D
@@ -55,10 +54,6 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	if (len > TASK_SIZE)
 		return -ENOMEM;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	if (addr) {
 		if (do_align)
 			addr = COLOUR_ALIGN(addr, pgoff);
@@ -66,20 +61,16 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 			addr = PAGE_ALIGN(addr);
 
 		vma = find_vma(mm, addr);
-		if (TASK_SIZE - len >= addr && check_heap_stack_gap(vma, &addr, len, offset))
+		if (TASK_SIZE - len >= addr &&
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 	if (len > mm->cached_hole_size) {
-		start_addr = addr = mm->free_area_cache;
+	        start_addr = addr = mm->free_area_cache;
 	} else {
-		start_addr = addr = mm->mmap_base;
-		mm->cached_hole_size = 0;
+	        start_addr = addr = TASK_UNMAPPED_BASE;
+	        mm->cached_hole_size = 0;
 	}
-
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(current->mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	/* 8 bits of randomness in 20 address space bits */
 	if ((current->flags & PF_RANDOMIZE) &&
 	    !(current->personality & ADDR_NO_RANDOMIZE))
@@ -98,14 +89,14 @@ full_search:
 			 * Start a new search - just in case we missed
 			 * some holes.
 			 */
-			if (start_addr != mm->mmap_base) {
-				start_addr = addr = mm->mmap_base;
+			if (start_addr != TASK_UNMAPPED_BASE) {
+				start_addr = addr = TASK_UNMAPPED_BASE;
 				mm->cached_hole_size = 0;
 				goto full_search;
 			}
 			return -ENOMEM;
 		}
-		if (check_heap_stack_gap(vma, &addr, len, offset)) {
+		if (!vma || addr + len <= vma->vm_start) {
 			/*
 			 * Remember the place where we stopped the search:
 			 */
@@ -119,6 +110,7 @@ full_search:
 			addr = COLOUR_ALIGN(addr, pgoff);
 	}
 }
+
 
 /*
  * You really shouldn't be using read() or write() on /dev/mem.  This

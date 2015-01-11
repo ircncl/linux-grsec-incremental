@@ -28,8 +28,6 @@
  * (at your option) any later version.
  */
 
-#include <asm/alternative-asm.h>
-
 #define CTX	%rdi	// arg1
 #define BUF	%rsi	// arg2
 #define CNT	%rdx	// arg3
@@ -77,9 +75,9 @@
 \name:
 	push	%rbx
 	push	%rbp
-	push	%r14
+	push	%r12
 
-	mov	%rsp, %r14
+	mov	%rsp, %r12
 	sub	$64, %rsp		# allocate workspace
 	and	$~15, %rsp		# align stack
 
@@ -101,12 +99,11 @@
 	xor	%rax, %rax
 	rep stosq
 
-	mov	%r14, %rsp		# deallocate workspace
+	mov	%r12, %rsp		# deallocate workspace
 
-	pop	%r14
+	pop	%r12
 	pop	%rbp
 	pop	%rbx
-	pax_force_retaddr
 	ret
 
 	.size	\name, .-\name

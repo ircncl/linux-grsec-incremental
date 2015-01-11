@@ -756,7 +756,7 @@ ltq_etop_probe(struct platform_device *pdev)
 	return 0;
 
 err_free:
-	free_netdev(dev);
+	kfree(dev);
 err_out:
 	return err;
 }

@@ -88,7 +88,6 @@
 #include <linux/nsproxy.h>
 #include <linux/magic.h>
 #include <linux/slab.h>
-#include <linux/in.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -105,8 +104,6 @@
 #include <linux/route.h>
 #include <linux/sockios.h>
 #include <linux/atalk.h>
-
-#include <linux/grsock.h>
 
 static int sock_no_open(struct inode *irrelevant, struct file *dontcare);
 static ssize_t sock_aio_read(struct kiocb *iocb, const struct iovec *iov,
@@ -159,7 +156,7 @@ static const struct file_operations socket_file_ops = {
  */
 
 static DEFINE_SPINLOCK(net_family_lock);
-const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
+static const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
 
 /*
  *	Statistics counters of the socket lists
@@ -325,7 +322,7 @@ static struct dentry *sockfs_mount(struct file_system_type *fs_type,
 		&sockfs_dentry_operations, SOCKFS_MAGIC);
 }
 
-struct vfsmount *sock_mnt __read_mostly;
+static struct vfsmount *sock_mnt __read_mostly;
 
 static struct file_system_type sock_fs_type = {
 	.name =		"sockfs",
@@ -1191,8 +1188,6 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 		return -EAFNOSUPPORT;
 	if (type < 0 || type >= SOCK_MAX)
 		return -EINVAL;
-	if (protocol < 0)
-		return -EINVAL;
 
 	/* Compatibility.
 
@@ -1212,20 +1207,6 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	err = security_socket_create(family, type, protocol, kern);
 	if (err)
 		return err;
-
-	if(!kern && !gr_search_socket(family, type, protocol)) {
-		if (rcu_access_pointer(net_families[family]) == NULL)
-			return -EAFNOSUPPORT;
-		else
-			return -EACCES;
-	}
-
-	if (!kern && gr_handle_sock_all(family, type, protocol)) {
-		if (rcu_access_pointer(net_families[family]) == NULL)
-			return -EAFNOSUPPORT;
-		else
-			return -EACCES;
-	}
 
 	/*
 	 *	Allocate the socket and allow the family to set things up. if
@@ -1451,14 +1432,6 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
 	if (sock) {
 		err = move_addr_to_kernel(umyaddr, addrlen, (struct sockaddr *)&address);
 		if (err >= 0) {
-			if (gr_handle_sock_server((struct sockaddr *)&address)) {
-				err = -EACCES;
-				goto error;
-			}
-			err = gr_search_bind(sock, (struct sockaddr_in *)&address);
-			if (err)
-				goto error;
-
 			err = security_socket_bind(sock,
 						   (struct sockaddr *)&address,
 						   addrlen);
@@ -1467,7 +1440,6 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
 						      (struct sockaddr *)
 						      &address, addrlen);
 		}
-error:
 		fput_light(sock->file, fput_needed);
 	}
 	return err;
@@ -1491,20 +1463,10 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 		if ((unsigned)backlog > somaxconn)
 			backlog = somaxconn;
 
-		if (gr_handle_sock_server_other(sock->sk)) {
-			err = -EPERM;
-			goto error;
-		}
-
-		err = gr_search_listen(sock);
-		if (err)
-			goto error;
-
 		err = security_socket_listen(sock, backlog);
 		if (!err)
 			err = sock->ops->listen(sock, backlog);
 
-error:
 		fput_light(sock->file, fput_needed);
 	}
 	return err;
@@ -1548,18 +1510,6 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 	newsock->type = sock->type;
 	newsock->ops = sock->ops;
 
-	if (gr_handle_sock_server_other(sock->sk)) {
-		err = -EPERM;
-		sock_release(newsock);
-		goto out_put;
-	}
-
-	err = gr_search_accept(sock);
-	if (err) {
-		sock_release(newsock);
-		goto out_put;
-	}
-
 	/*
 	 * We don't need try_module_get here, as the listening socket (sock)
 	 * has the protocol module (sock->ops->owner) held.
@@ -1598,8 +1548,6 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 	fd_install(newfd, newfile);
 	err = newfd;
 
-	gr_attach_curr_ip(newsock->sk);
-
 out_put:
 	fput_light(sock->file, fput_needed);
 out:
@@ -1632,7 +1580,6 @@ SYSCALL_DEFINE3(connect, int, fd, struct sockaddr __user *, uservaddr,
 		int, addrlen)
 {
 	struct socket *sock;
-	struct sockaddr *sck;
 	struct sockaddr_storage address;
 	int err, fput_needed;
 
@@ -1641,17 +1588,6 @@ SYSCALL_DEFINE3(connect, int, fd, struct sockaddr __user *, uservaddr,
 		goto out;
 	err = move_addr_to_kernel(uservaddr, addrlen, (struct sockaddr *)&address);
 	if (err < 0)
-		goto out_put;
-
-	sck = (struct sockaddr *)&address;
-
-	if (gr_handle_sock_client(sck)) {
-		err = -EACCES;
-		goto out_put;
-	}
-
-	err = gr_search_connect(sock, (struct sockaddr_in *)sck);
-	if (err)
 		goto out_put;
 
 	err =
@@ -1735,8 +1671,6 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
  *	the protocol.
  */
 
-asmlinkage long sys_sendto(int, void __user *, size_t, unsigned, struct sockaddr __user *, int);
-
 SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,
 		unsigned, flags, struct sockaddr __user *, addr,
 		int, addr_len)
@@ -1803,7 +1737,7 @@ SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 	struct socket *sock;
 	struct iovec iov;
 	struct msghdr msg;
-	struct sockaddr_storage address = { };
+	struct sockaddr_storage address;
 	int err, err2;
 	int fput_needed;
 
@@ -1951,9 +1885,6 @@ static int copy_msghdr_from_user(struct msghdr *kmsg,
 	if (copy_from_user(kmsg, umsg, sizeof(struct msghdr)))
 		return -EFAULT;
 
-	if (kmsg->msg_name == NULL)
-		kmsg->msg_namelen = 0;
-
 	if (kmsg->msg_namelen < 0)
 		return -EINVAL;
 
@@ -2039,7 +1970,7 @@ static int ___sys_sendmsg(struct socket *sock, struct msghdr __user *msg,
 		 * checking falls down on this.
 		 */
 		if (copy_from_user(ctl_buf,
-				   (void __force_user *)msg_sys->msg_control,
+				   (void __user __force *)msg_sys->msg_control,
 				   ctl_len))
 			goto out_freectl;
 		msg_sys->msg_control = ctl_buf;
@@ -2190,7 +2121,7 @@ static int ___sys_recvmsg(struct socket *sock, struct msghdr __user *msg,
 	int err, iov_size, total_len, len;
 
 	/* kernel mode address */
-	struct sockaddr_storage addr = { };
+	struct sockaddr_storage addr;
 
 	/* user mode address pointers */
 	struct sockaddr __user *uaddr;
@@ -2221,8 +2152,7 @@ static int ___sys_recvmsg(struct socket *sock, struct msghdr __user *msg,
 	/* Save the user-mode address (verify_iovec will change the
 	 * kernel msghdr to use the kernel address space)
 	 */
-
-	uaddr = (void __force_user *)msg_sys->msg_name;
+	uaddr = (__force void __user *)msg_sys->msg_name;
 	uaddr_len = COMPAT_NAMELEN(msg);
 	if (MSG_CMSG_COMPAT & flags)
 		err = verify_compat_iovec(msg_sys, iov,
@@ -2866,9 +2796,9 @@ static int ethtool_ioctl(struct net *net, struct compat_ifreq __user *ifr32)
 	}
 
 	ifr = compat_alloc_user_space(buf_size);
-	rxnfc = (void __user *)ifr + ALIGN(sizeof(struct ifreq), 8);
+	rxnfc = (void *)ifr + ALIGN(sizeof(struct ifreq), 8);
 
-	if (copy_in_user(ifr->ifr_name, ifr32->ifr_name, IFNAMSIZ))
+	if (copy_in_user(&ifr->ifr_name, &ifr32->ifr_name, IFNAMSIZ))
 		return -EFAULT;
 
 	if (put_user(convert_in ? rxnfc : compat_ptr(data),
@@ -2890,12 +2820,12 @@ static int ethtool_ioctl(struct net *net, struct compat_ifreq __user *ifr32)
 			offsetof(struct ethtool_rxnfc, fs.ring_cookie));
 
 		if (copy_in_user(rxnfc, compat_rxnfc,
-				 (void __user *)(&rxnfc->fs.m_ext + 1) -
-				 (void __user *)rxnfc) ||
+				 (void *)(&rxnfc->fs.m_ext + 1) -
+				 (void *)rxnfc) ||
 		    copy_in_user(&rxnfc->fs.ring_cookie,
 				 &compat_rxnfc->fs.ring_cookie,
-				 (void __user *)(&rxnfc->fs.location + 1) -
-				 (void __user *)&rxnfc->fs.ring_cookie) ||
+				 (void *)(&rxnfc->fs.location + 1) -
+				 (void *)&rxnfc->fs.ring_cookie) ||
 		    copy_in_user(&rxnfc->rule_cnt, &compat_rxnfc->rule_cnt,
 				 sizeof(rxnfc->rule_cnt)))
 			return -EFAULT;
@@ -2907,12 +2837,12 @@ static int ethtool_ioctl(struct net *net, struct compat_ifreq __user *ifr32)
 
 	if (convert_out) {
 		if (copy_in_user(compat_rxnfc, rxnfc,
-				 (const void __user *)(&rxnfc->fs.m_ext + 1) -
-				 (const void __user *)rxnfc) ||
+				 (const void *)(&rxnfc->fs.m_ext + 1) -
+				 (const void *)rxnfc) ||
 		    copy_in_user(&compat_rxnfc->fs.ring_cookie,
 				 &rxnfc->fs.ring_cookie,
-				 (const void __user *)(&rxnfc->fs.location + 1) -
-				 (const void __user *)&rxnfc->fs.ring_cookie) ||
+				 (const void *)(&rxnfc->fs.location + 1) -
+				 (const void *)&rxnfc->fs.ring_cookie) ||
 		    copy_in_user(&compat_rxnfc->rule_cnt, &rxnfc->rule_cnt,
 				 sizeof(rxnfc->rule_cnt)))
 			return -EFAULT;
@@ -2982,14 +2912,14 @@ static int bond_ioctl(struct net *net, unsigned int cmd,
 		old_fs = get_fs();
 		set_fs(KERNEL_DS);
 		err = dev_ioctl(net, cmd,
-				(struct ifreq __force_user *) &kifr);
+				(struct ifreq __user __force *) &kifr);
 		set_fs(old_fs);
 
 		return err;
 	case SIOCBONDSLAVEINFOQUERY:
 	case SIOCBONDINFOQUERY:
 		uifr = compat_alloc_user_space(sizeof(*uifr));
-		if (copy_in_user(uifr->ifr_name, ifr32->ifr_name, IFNAMSIZ))
+		if (copy_in_user(&uifr->ifr_name, &ifr32->ifr_name, IFNAMSIZ))
 			return -EFAULT;
 
 		if (get_user(data, &ifr32->ifr_ifru.ifru_data))
@@ -3091,7 +3021,7 @@ static int compat_sioc_ifmap(struct net *net, unsigned int cmd,
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
-	err = dev_ioctl(net, cmd, (void  __force_user *)&ifr);
+	err = dev_ioctl(net, cmd, (void  __user __force *)&ifr);
 	set_fs(old_fs);
 
 	if (cmd == SIOCGIFMAP && !err) {
@@ -3196,7 +3126,7 @@ static int routing_ioctl(struct net *net, struct socket *sock,
 		ret |= __get_user(rtdev, &(ur4->rt_dev));
 		if (rtdev) {
 			ret |= copy_from_user(devname, compat_ptr(rtdev), 15);
-			r4.rt_dev = (char __force_user *)devname;
+			r4.rt_dev = (char __user __force *)devname;
 			devname[15] = 0;
 		} else
 			r4.rt_dev = NULL;
@@ -3436,8 +3366,8 @@ int kernel_getsockopt(struct socket *sock, int level, int optname,
 	int __user *uoptlen;
 	int err;
 
-	uoptval = (char __force_user *) optval;
-	uoptlen = (int __force_user *) optlen;
+	uoptval = (char __user __force *) optval;
+	uoptlen = (int __user __force *) optlen;
 
 	set_fs(KERNEL_DS);
 	if (level == SOL_SOCKET)
@@ -3457,7 +3387,7 @@ int kernel_setsockopt(struct socket *sock, int level, int optname,
 	char __user *uoptval;
 	int err;
 
-	uoptval = (char __force_user *) optval;
+	uoptval = (char __user __force *) optval;
 
 	set_fs(KERNEL_DS);
 	if (level == SOL_SOCKET)

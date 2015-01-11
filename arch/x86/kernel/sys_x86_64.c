@@ -95,8 +95,8 @@ out:
 	return error;
 }
 
-static void find_start_end(struct mm_struct *mm, unsigned long flags,
-			   unsigned long *begin, unsigned long *end)
+static void find_start_end(unsigned long flags, unsigned long *begin,
+			   unsigned long *end)
 {
 	if (!test_thread_flag(TIF_IA32) && (flags & MAP_32BIT)) {
 		unsigned long new_begin;
@@ -115,7 +115,7 @@ static void find_start_end(struct mm_struct *mm, unsigned long flags,
 				*begin = new_begin;
 		}
 	} else {
-		*begin = mm->mmap_legacy_base;
+		*begin = current->mm->mmap_legacy_base;
 		*end = TASK_SIZE;
 	}
 }
@@ -128,24 +128,20 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	struct vm_area_struct *vma;
 	unsigned long start_addr;
 	unsigned long begin, end;
-	unsigned long offset = gr_rand_threadstack_offset(mm, filp, flags);
 
 	if (flags & MAP_FIXED)
 		return addr;
 
-	find_start_end(mm, flags, &begin, &end);
+	find_start_end(flags, &begin, &end);
 
 	if (len > end)
 		return -ENOMEM;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	if (addr) {
 		addr = PAGE_ALIGN(addr);
 		vma = find_vma(mm, addr);
-		if (end - len >= addr && check_heap_stack_gap(vma, &addr, len, offset))
+		if (end - len >= addr &&
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 	if (((flags & MAP_32BIT) || test_thread_flag(TIF_IA32))
@@ -176,7 +172,7 @@ full_search:
 			}
 			return -ENOMEM;
 		}
-		if (check_heap_stack_gap(vma, &addr, len, offset)) {
+		if (!vma || addr + len <= vma->vm_start) {
 			/*
 			 * Remember the place where we stopped the search:
 			 */
@@ -199,8 +195,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 {
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
-	unsigned long base = mm->mmap_base, addr = addr0;
-	unsigned long offset = gr_rand_threadstack_offset(mm, filp, flags);
+	unsigned long addr = addr0;
 
 	/* requested length too big for entire address space */
 	if (len > TASK_SIZE)
@@ -213,18 +208,13 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	if (!test_thread_flag(TIF_IA32) && (flags & MAP_32BIT))
 		goto bottomup;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	/* requesting a specific address */
 	if (addr) {
 		addr = PAGE_ALIGN(addr);
-		if (TASK_SIZE - len >= addr) {
-			vma = find_vma(mm, addr);
-			if (check_heap_stack_gap(vma, &addr, len, offset))
-				return addr;
-		}
+		vma = find_vma(mm, addr);
+		if (TASK_SIZE - len >= addr &&
+				(!vma || addr + len <= vma->vm_start))
+			return addr;
 	}
 
 	/* check if free_area_cache is useful for us */
@@ -242,7 +232,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 						    ALIGN_TOPDOWN);
 
 		vma = find_vma(mm, tmp_addr);
-		if (check_heap_stack_gap(vma, &tmp_addr, len, offset))
+		if (!vma || tmp_addr + len <= vma->vm_start)
 			/* remember the address as a hint for next time */
 			return mm->free_area_cache = tmp_addr;
 	}
@@ -261,7 +251,7 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 		 * return with success:
 		 */
 		vma = find_vma(mm, addr);
-		if (check_heap_stack_gap(vma, &addr, len, offset))
+		if (!vma || addr+len <= vma->vm_start)
 			/* remember the address as a hint for next time */
 			return mm->free_area_cache = addr;
 
@@ -270,8 +260,8 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 			mm->cached_hole_size = vma->vm_start - addr;
 
 		/* try just below the current vma->vm_start */
-		addr = skip_heap_stack_gap(vma, len, offset);
-	} while (!IS_ERR_VALUE(addr));
+		addr = vma->vm_start-len;
+	} while (len < vma->vm_start);
 
 bottomup:
 	/*
@@ -280,21 +270,13 @@ bottomup:
 	 * can happen with large stack limits and large mmap()
 	 * allocations.
 	 */
-	mm->mmap_base = TASK_UNMAPPED_BASE;
-
-#ifdef CONFIG_PAX_RANDMMAP
-	if (mm->pax_flags & MF_PAX_RANDMMAP)
-		mm->mmap_base += mm->delta_mmap;
-#endif
-
-	mm->free_area_cache = mm->mmap_base;
 	mm->cached_hole_size = ~0UL;
+	mm->free_area_cache = TASK_UNMAPPED_BASE;
 	addr = arch_get_unmapped_area(filp, addr0, len, pgoff, flags);
 	/*
 	 * Restore the topdown base:
 	 */
-	mm->mmap_base = base;
-	mm->free_area_cache = base;
+	mm->free_area_cache = mm->mmap_base;
 	mm->cached_hole_size = ~0UL;
 
 	return addr;

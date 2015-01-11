@@ -190,11 +190,11 @@ _decode_session4(struct sk_buff *skb, struct flowi *fl, int reverse)
 	fl4->flowi4_tos = iph->tos;
 }
 
-static int xfrm4_garbage_collect(struct dst_ops *ops)
+static inline int xfrm4_garbage_collect(struct dst_ops *ops)
 {
 	struct net *net = container_of(ops, struct net, xfrm.xfrm4_dst_ops);
 
-	xfrm_garbage_collect_deferred(net);
+	xfrm4_policy_afinfo.garbage_collect(net);
 	return (dst_entries_get_slow(ops) > ops->gc_thresh * 2);
 }
 

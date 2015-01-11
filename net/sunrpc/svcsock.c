@@ -396,7 +396,7 @@ static int svc_partial_recvfrom(struct svc_rqst *rqstp,
 				int buflen, unsigned int base)
 {
 	size_t save_iovlen;
-	void *save_iovbase;
+	void __user *save_iovbase;
 	unsigned int i;
 	int ret;
 

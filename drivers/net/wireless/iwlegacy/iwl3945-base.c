@@ -3685,9 +3685,7 @@ static int iwl3945_pci_probe(struct pci_dev *pdev, const struct pci_device_id *e
 	 */
 	if (iwl3945_mod_params.disable_hw_scan) {
 		IWL_DEBUG_INFO(priv, "Disabling hw_scan\n");
-		pax_open_kernel();
-		*(void **)&iwl3945_hw_ops.hw_scan = NULL;
-		pax_close_kernel();
+		iwl3945_hw_ops.hw_scan = NULL;
 	}
 
 	IWL_DEBUG_INFO(priv, "*** LOAD DRIVER ***\n");
