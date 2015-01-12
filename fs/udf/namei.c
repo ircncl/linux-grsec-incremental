@@ -233,8 +233,7 @@ static struct fileIdentDesc *udf_find_entry(struct inode *dir,
 		if (!lfi)
 			continue;
 
-		flen = udf_get_filename(dir->i_sb, nameptr, lfi, fname,
-					UDF_NAME_LEN);
+		flen = udf_get_filename(dir->i_sb, nameptr, fname, lfi);
 		if (flen && udf_match(flen, fname, child->len, child->name))
 			goto out_ok;
 	}
@@ -271,8 +270,9 @@ static struct dentry *udf_lookup(struct inode *dir, struct dentry *dentry,
 						NULL, 0),
 		};
 		inode = udf_iget(dir->i_sb, lb);
-		if (IS_ERR(inode))
-			return inode;
+		if (!inode) {
+			return ERR_PTR(-EACCES);
+		}
 	} else
 #endif /* UDF_RECOVERY */
 
@@ -285,8 +285,9 @@ static struct dentry *udf_lookup(struct inode *dir, struct dentry *dentry,
 
 		loc = lelb_to_cpu(cfi.icb.extLocation);
 		inode = udf_iget(dir->i_sb, &loc);
-		if (IS_ERR(inode))
-			return ERR_CAST(inode);
+		if (!inode) {
+			return ERR_PTR(-EACCES);
+		}
 	}
 
 	return d_splice_alias(inode, dentry);
@@ -1220,7 +1221,7 @@ static struct dentry *udf_get_parent(struct dentry *child)
 	struct udf_fileident_bh fibh;
 
 	if (!udf_find_entry(child->d_inode, &dotdot, &fibh, &cfi))
-		return ERR_PTR(-EACCES);
+		goto out_unlock;
 
 	if (fibh.sbh != fibh.ebh)
 		brelse(fibh.ebh);
@@ -1228,10 +1229,12 @@ static struct dentry *udf_get_parent(struct dentry *child)
 
 	tloc = lelb_to_cpu(cfi.icb.extLocation);
 	inode = udf_iget(child->d_inode->i_sb, &tloc);
-	if (IS_ERR(inode))
-		return ERR_CAST(inode);
+	if (!inode)
+		goto out_unlock;
 
 	return d_obtain_alias(inode);
+out_unlock:
+	return ERR_PTR(-EACCES);
 }
 
 
@@ -1248,8 +1251,8 @@ static struct dentry *udf_nfs_get_inode(struct super_block *sb, u32 block,
 	loc.partitionReferenceNum = partref;
 	inode = udf_iget(sb, &loc);
 
-	if (IS_ERR(inode))
-		return ERR_CAST(inode);
+	if (inode == NULL)
+		return ERR_PTR(-ENOMEM);
 
 	if (generation && inode->i_generation != generation) {
 		iput(inode);

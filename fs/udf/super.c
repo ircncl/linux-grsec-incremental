@@ -956,14 +956,12 @@ struct inode *udf_find_metadata_inode_efe(struct super_block *sb,
 
 	metadata_fe = udf_iget(sb, &addr);
 
-	if (IS_ERR(metadata_fe)) {
+	if (metadata_fe == NULL)
 		udf_warn(sb, "metadata inode efe not found\n");
-		return metadata_fe;
-	}
-	if (UDF_I(metadata_fe)->i_alloc_type != ICBTAG_FLAG_AD_SHORT) {
+	else if (UDF_I(metadata_fe)->i_alloc_type != ICBTAG_FLAG_AD_SHORT) {
 		udf_warn(sb, "metadata inode efe does not have short allocation descriptors!\n");
 		iput(metadata_fe);
-		return ERR_PTR(-EIO);
+		metadata_fe = NULL;
 	}
 
 	return metadata_fe;
@@ -975,7 +973,6 @@ static int udf_load_metadata_files(struct super_block *sb, int partition)
 	struct udf_part_map *map;
 	struct udf_meta_data *mdata;
 	struct kernel_lb_addr addr;
-	struct inode *fe;
 
 	map = &sbi->s_partmaps[partition];
 	mdata = &map->s_type_specific.s_metadata;
@@ -984,24 +981,22 @@ static int udf_load_metadata_files(struct super_block *sb, int partition)
 	udf_debug("Metadata file location: block = %d part = %d\n",
 		  mdata->s_meta_file_loc, map->s_partition_num);
 
-	fe = udf_find_metadata_inode_efe(sb, mdata->s_meta_file_loc,
-					 map->s_partition_num);
-	if (IS_ERR(fe)) {
+	mdata->s_metadata_fe = udf_find_metadata_inode_efe(sb,
+		mdata->s_meta_file_loc, map->s_partition_num);
+
+	if (mdata->s_metadata_fe == NULL) {
 		/* mirror file entry */
 		udf_debug("Mirror metadata file location: block = %d part = %d\n",
 			  mdata->s_mirror_file_loc, map->s_partition_num);
 
-		fe = udf_find_metadata_inode_efe(sb, mdata->s_mirror_file_loc,
-						 map->s_partition_num);
+		mdata->s_mirror_fe = udf_find_metadata_inode_efe(sb,
+			mdata->s_mirror_file_loc, map->s_partition_num);
 
-		if (IS_ERR(fe)) {
+		if (mdata->s_mirror_fe == NULL) {
 			udf_err(sb, "Both metadata and mirror metadata inode efe can not found\n");
-			return PTR_ERR(fe);
+			return -EIO;
 		}
-		mdata->s_mirror_fe = fe;
-	} else
-		mdata->s_metadata_fe = fe;
-
+	}
 
 	/*
 	 * bitmap file entry
@@ -1015,16 +1010,15 @@ static int udf_load_metadata_files(struct super_block *sb, int partition)
 		udf_debug("Bitmap file location: block = %d part = %d\n",
 			  addr.logicalBlockNum, addr.partitionReferenceNum);
 
-		fe = udf_iget(sb, &addr);
-		if (IS_ERR(fe)) {
+		mdata->s_bitmap_fe = udf_iget(sb, &addr);
+		if (mdata->s_bitmap_fe == NULL) {
 			if (sb->s_flags & MS_RDONLY)
 				udf_warn(sb, "bitmap inode efe not found but it's ok since the disc is mounted read-only\n");
 			else {
 				udf_err(sb, "bitmap inode efe not found and attempted read-write mount\n");
-				return PTR_ERR(fe);
+				return -EIO;
 			}
-		} else
-			mdata->s_bitmap_fe = fe;
+		}
 	}
 
 	udf_debug("udf_load_metadata_files Ok\n");
@@ -1112,15 +1106,13 @@ static int udf_fill_partdesc_info(struct super_block *sb,
 				phd->unallocSpaceTable.extPosition),
 			.partitionReferenceNum = p_index,
 		};
-		struct inode *inode;
 
-		inode = udf_iget(sb, &loc);
-		if (IS_ERR(inode)) {
+		map->s_uspace.s_table = udf_iget(sb, &loc);
+		if (!map->s_uspace.s_table) {
 			udf_debug("cannot load unallocSpaceTable (part %d)\n",
 				  p_index);
-			return PTR_ERR(inode);
+			return -EIO;
 		}
-		map->s_uspace.s_table = inode;
 		map->s_partition_flags |= UDF_PART_FLAG_UNALLOC_TABLE;
 		udf_debug("unallocSpaceTable (part %d) @ %ld\n",
 			  p_index, map->s_uspace.s_table->i_ino);
@@ -1147,15 +1139,14 @@ static int udf_fill_partdesc_info(struct super_block *sb,
 				phd->freedSpaceTable.extPosition),
 			.partitionReferenceNum = p_index,
 		};
-		struct inode *inode;
 
-		inode = udf_iget(sb, &loc);
-		if (IS_ERR(inode)) {
+		map->s_fspace.s_table = udf_iget(sb, &loc);
+		if (!map->s_fspace.s_table) {
 			udf_debug("cannot load freedSpaceTable (part %d)\n",
 				  p_index);
-			return PTR_ERR(inode);
+			return -EIO;
 		}
-		map->s_fspace.s_table = inode;
+
 		map->s_partition_flags |= UDF_PART_FLAG_FREED_TABLE;
 		udf_debug("freedSpaceTable (part %d) @ %ld\n",
 			  p_index, map->s_fspace.s_table->i_ino);
@@ -1182,7 +1173,6 @@ static void udf_find_vat_block(struct super_block *sb, int p_index,
 	struct udf_part_map *map = &sbi->s_partmaps[p_index];
 	sector_t vat_block;
 	struct kernel_lb_addr ino;
-	struct inode *inode;
 
 	/*
 	 * VAT file entry is in the last recorded block. Some broken disks have
@@ -1191,13 +1181,10 @@ static void udf_find_vat_block(struct super_block *sb, int p_index,
 	ino.partitionReferenceNum = type1_index;
 	for (vat_block = start_block;
 	     vat_block >= map->s_partition_root &&
-	     vat_block >= start_block - 3; vat_block--) {
+	     vat_block >= start_block - 3 &&
+	     !sbi->s_vat_inode; vat_block--) {
 		ino.logicalBlockNum = vat_block - map->s_partition_root;
-		inode = udf_iget(sb, &ino);
-		if (!IS_ERR(inode)) {
-			sbi->s_vat_inode = inode;
-			break;
-		}
+		sbi->s_vat_inode = udf_iget(sb, &ino);
 	}
 }
 
@@ -2213,10 +2200,10 @@ static int udf_fill_super(struct super_block *sb, void *options, int silent)
 	/* assign inodes by physical block number */
 	/* perhaps it's not extensible enough, but for now ... */
 	inode = udf_iget(sb, &rootdir);
-	if (IS_ERR(inode)) {
+	if (!inode) {
 		udf_err(sb, "Error in udf_iget, block=%d, partition=%d\n",
 		       rootdir.logicalBlockNum, rootdir.partitionReferenceNum);
-		ret = PTR_ERR(inode);
+		ret = -EIO;
 		goto error_out;
 	}
 
