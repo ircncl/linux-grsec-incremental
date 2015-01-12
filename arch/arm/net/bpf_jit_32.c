@@ -20,7 +20,6 @@
 #include <asm/cacheflush.h>
 #include <asm/hwcap.h>
 #include <asm/opcodes.h>
-#include <asm/pgtable.h>
 
 #include "bpf_jit_32.h"
 
@@ -72,11 +71,7 @@ struct jit_ctx {
 #endif
 };
 
-#ifdef CONFIG_GRKERNSEC_BPF_HARDEN
-int bpf_jit_enable __read_only;
-#else
 int bpf_jit_enable __read_mostly;
-#endif
 
 static u64 jit_get_skb_b(struct sk_buff *skb, unsigned offset)
 {
@@ -183,10 +178,8 @@ static void jit_fill_hole(void *area, unsigned int size)
 {
 	u32 *ptr;
 	/* We are guaranteed to have aligned memory. */
-	pax_open_kernel();
 	for (ptr = area; size >= sizeof(u32); size -= sizeof(u32))
 		*ptr++ = __opcode_to_mem_arm(ARM_INST_UDF);
-	pax_close_kernel();
 }
 
 static void build_prologue(struct jit_ctx *ctx)
